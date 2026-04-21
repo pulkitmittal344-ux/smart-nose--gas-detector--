@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Air Quality Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body style="background:#0b1220;color:white;font-family:sans-serif;padding:20px;">
+
+<h1>🌫️ Air Quality Dashboard</h1>
+
+<!-- 🚨 ALERT -->
+<h2 id="alert"></h2>
+
+<!-- 📅 DATE -->
+<h3 id="date"></h3>
+
+<!-- 🌡️ LIVE VALUES -->
+<h3 id="temp">Temperature: -- °C</h3>
+<h3 id="hum">Humidity: -- %</h3>
+
+<!-- 📊 THREE GRAPHS -->
+<div style="width: 90%; max-width: 900px;">
+
+  <h3>🔵 LPG (MQ2)</h3>
+  <canvas id="chart_mq2" style="height:200px;"></canvas>
+
+  <h3>🟢 Methane (MQ4)</h3>
+  <canvas id="chart_mq4" style="height:200px;"></canvas>
+
+  <h3>🔴 Air Quality (MQ135)</h3>
+  <canvas id="chart_mq135" style="height:200px;"></canvas>
+
+</div>
+
+<script>
+const API = "https://iot-proj-pjab.onrender.com/history";
+
+let chart_mq2, chart_mq4, chart_mq135;
+
+// ✅ TIME FORMAT
+function formatTime(datetime) {
+  if (!datetime) return "--";
+  const iso = datetime.replace(" ", "T") + "Z";
+  const d = new Date(iso);
+
+  return d.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+}
+
+// ✅ DATE DISPLAY
+function updateDate() {
+  const now = new Date();
+  document.getElementById("date").innerText =
+    "📅 " + now.toLocaleDateString() + " | ⏱ " + now.toLocaleTimeString();
+}
+
+// ✅ CREATE CHART FUNCTION
+function createChart(ctx, label, color) {
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label: label,
+        data: [],
+        borderColor: color,
+        tension: 0.3,
+        pointRadius: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      plugins: {
+        legend: {
+          labels: { color: 'white' }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: 'white' }
+        },
+        y: {
+          ticks: { color: 'white' },
+          title: {
+            display: true,
+            text: 'PPM',
+            color: 'white'
+          }
+        }
+      }
+    }
+  });
+}
+
+async function fetchData() {
+  try {
+    const res = await fetch(API);
+    const data = await res.json();
+
+    if (!data || data.length === 0) return;
+
+    const latest = data[data.length - 1];
+
+    // 🌡️ TEMP + HUM
+    document.getElementById("temp").innerText =
+      "Temperature: " + latest.temp + " °C";
+
+    document.getElementById("hum").innerText =
+      "Humidity: " + latest.hum + " %";
+
+    // 🚨 ALERT
+    const alertBox = document.getElementById("alert");
+    alertBox.innerText = latest.status;
+
+    if (latest.status.includes("CRITICAL")) {
+      alertBox.style.color = "red";
+    } else if (latest.status.includes("Leak")) {
+      alertBox.style.color = "orange";
+    } else if (latest.status.includes("Risk")) {
+      alertBox.style.color = "yellow";
+    } else {
+      alertBox.style.color = "lightgreen";
+    }
+
+    // 📊 LAST 15 VALUES
+    const recent = data.slice(-15);
+
+    const labels = recent.map(d => formatTime(d.time));
+    const mq2 = recent.map(d => d.mq2);
+    const mq4 = recent.map(d => d.mq4);
+    const mq135 = recent.map(d => d.mq135);
+
+    // 🔵 LPG
+    if (!chart_mq2) {
+      chart_mq2 = createChart(
+        document.getElementById('chart_mq2').getContext('2d'),
+        'LPG (ppm)',
+        'blue'
+      );
+    }
+    chart_mq2.data.labels = labels;
+    chart_mq2.data.datasets[0].data = mq2;
+    chart_mq2.update();
+
+    // 🟢 Methane
+    if (!chart_mq4) {
+      chart_mq4 = createChart(
+        document.getElementById('chart_mq4').getContext('2d'),
+        'Methane (ppm)',
+        'green'
+      );
+    }
+    chart_mq4.data.labels = labels;
+    chart_mq4.data.datasets[0].data = mq4;
+    chart_mq4.update();
+
+    // 🔴 MQ135
+    if (!chart_mq135) {
+      chart_mq135 = createChart(
+        document.getElementById('chart_mq135').getContext('2d'),
+        'NH3 (ppm)',
+        'red'
+      );
+    }
+    chart_mq135.data.labels = labels;
+    chart_mq135.data.datasets[0].data = mq135;
+    chart_mq135.update();
+
+  } catch (err) {
+    console.error("ERROR:", err);
+  }
+}
+
+// 🚀 INIT
+updateDate();
+fetchData();
+
+// 🔁 LOOP
+setInterval(fetchData, 5000);
+setInterval(updateDate, 1000);
+
+</script>
+
+</body>
+</html>
